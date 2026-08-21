@@ -1,0 +1,6 @@
+{
+  "name": "CadetTrack",
+  "description": "Cadet Band Attendance Tracker across squadrons for Training Nights and Band Practices",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

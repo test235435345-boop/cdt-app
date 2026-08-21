@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "709867930511",
+    "project_id": "cadet-app-55891",
+    "storage_bucket": "cadet-app-55891.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:709867930511:android:7e18b12186c163ecd901fa",
+        "android_client_info": {
+          "package_name": "com.cadetapp.attendance"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "709867930511-8jmolt5uhbfif0jsvoqcn89ecikulbuk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAA5gJRwT1lFhRaF7TyUK03zMhu24EkOwc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "709867930511-8jmolt5uhbfif0jsvoqcn89ecikulbuk.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
