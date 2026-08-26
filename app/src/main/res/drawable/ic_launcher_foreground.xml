@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered gold ring at (54,54) with radius 30 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="2.2"
+        android:pathData="M54,24 A30,30 0 1,0 54,84 A30,30 0 1,0 54,24" />
+    <!-- Chevron 1: Top chevron, centered horizontally at X=54 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="4.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M37,39 L54,48 L71,39" />
+    <!-- Chevron 2: Middle chevron, centered horizontally at X=54 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="4.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M37,50 L54,59 L71,50" />
+    <!-- Chevron 3: Bottom chevron, centered horizontally at X=54 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="4.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M37,61 L54,70 L71,61" />
+</vector>

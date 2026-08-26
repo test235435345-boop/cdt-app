@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Deep plum filled circle -->
+    <path
+        android:fillColor="#4A3F6B"
+        android:pathData="M54,4 A50,50 0 1,0 54,104 A50,50 0 1,0 54,4" />
+    <!-- Thin gold ring inset from edge centered at (54,54) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="2.5"
+        android:pathData="M54,14 A40,40 0 1,0 54,94 A40,40 0 1,0 54,14" />
+    <!-- Chevrons centered at (54,54) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="6.0"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M33,34 L54,46 L75,34" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="6.0"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M33,48 L54,60 L75,48" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C9A15A"
+        android:strokeWidth="6.0"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M33,62 L54,74 L75,62" />
+</vector>
