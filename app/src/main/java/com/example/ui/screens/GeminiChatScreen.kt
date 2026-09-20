@@ -2,6 +2,15 @@ package com.example.ui.screens
 
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -77,6 +86,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -112,6 +123,7 @@ fun GeminiChatScreen(
     onSelectSession: ((String) -> Unit)? = null,
     onNewSession: (() -> Unit)? = null,
     onDeleteSession: ((String) -> Unit)? = null,
+    onQuickAction: ((targetScreen: String, targetParam: String) -> Unit)? = null,
     getCadetStats: ((Cadet) -> CadetAttendanceStats)? = null,
     onUpdateCadet: ((Cadet, (Boolean, String?) -> Unit) -> Unit)? = null,
     onArchiveCadet: ((String, String) -> Unit)? = null,
@@ -425,7 +437,8 @@ fun GeminiChatScreen(
                                                 cadets = cadets,
                                                 onSelectCadet = { cadet ->
                                                     selectedCadetForProfile = cadet
-                                                }
+                                                },
+                                                onQuickAction = onQuickAction
                                             )
                                         }
                                     } else {
@@ -467,22 +480,7 @@ fun GeminiChatScreen(
 
                 if (isLoading) {
                     item {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = "Analyzing attendance data...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        AnimatedThinkingIndicator()
                     }
                 }
 
@@ -491,13 +489,11 @@ fun GeminiChatScreen(
                 }
             }
 
-            // Bottom Input Bar - Responsive and IME-aware
+            // Bottom Input Bar - Responsive layout
             Surface(
                 color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 6.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .imePadding()
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     // Response Format Selector
@@ -870,3 +866,111 @@ fun GeminiChatScreen(
         )
     }
 }
+
+@Composable
+fun AnimatedThinkingIndicator(modifier: Modifier = Modifier) {
+    val infiniteTransition = rememberInfiniteTransition(label = "thinking_indicator")
+
+    val dot1Alpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot1"
+    )
+    val dot2Alpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, delayMillis = 200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot2"
+    )
+    val dot3Alpha by infiniteTransition.animateFloat(
+        initialValue = 0.2f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, delayMillis = 400, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "dot3"
+    )
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+        modifier = modifier.padding(horizontal = 4.dp, vertical = 6.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(24.dp)
+                    .graphicsLayer {
+                        scaleX = pulseScale
+                        scaleY = pulseScale
+                    }
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), CircleShape)
+            ) {
+                Icon(
+                    Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Text(
+                text = "Analyzing attendance data",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .graphicsLayer { alpha = dot1Alpha }
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .graphicsLayer { alpha = dot2Alpha }
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .graphicsLayer { alpha = dot3Alpha }
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                )
+            }
+        }
+    }
+}
+

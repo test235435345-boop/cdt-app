@@ -184,37 +184,43 @@ fun QuickAttendanceButton(
     modifier: Modifier = Modifier
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.05f else 1.0f,
+        targetValue = if (isSelected) 1.03f else 1.0f,
         animationSpec = spring(dampingRatio = 0.6f),
         label = "scale"
     )
     val actualBg by animateColorAsState(
-        targetValue = if (isSelected) containerColor else containerColor.copy(alpha = 0.35f),
+        targetValue = if (isSelected) containerColor else containerColor.copy(alpha = 0.28f),
         label = "bg"
     )
     val actualText by animateColorAsState(
-        targetValue = if (isSelected) contentColor else contentColor.copy(alpha = 0.65f),
+        targetValue = if (isSelected) contentColor else contentColor.copy(alpha = 0.85f),
         label = "text"
     )
 
     Surface(
         color = actualBg,
-        shape = RoundedCornerShape(14.dp),
-        border = if (isSelected) BorderStroke(1.5.dp, contentColor) else null,
+        shape = RoundedCornerShape(12.dp),
+        border = if (isSelected) BorderStroke(1.5.dp, contentColor) else BorderStroke(0.5.dp, containerColor.copy(alpha = 0.35f)),
         modifier = modifier
             .scale(scale)
-            .shadow(if (isSelected) 3.dp else 0.dp, RoundedCornerShape(14.dp))
+            .shadow(if (isSelected) 2.dp else 0.dp, RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 9.dp)
         ) {
             Text(
                 text = label,
                 color = actualText,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -231,7 +237,7 @@ fun CadetAttendanceCard(
     val status = currentRecord?.status ?: AttendanceRecord.STATUS_UNMARKED
 
     ElevatedCard(
-        shape = RoundedCornerShape(20.dp), // 20dp as per spec
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
         modifier = modifier
@@ -240,7 +246,7 @@ fun CadetAttendanceCard(
             .testTag("cadet_card_${cadet.id}")
     ) {
         Column(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier.padding(12.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -269,38 +275,49 @@ fun CadetAttendanceCard(
 
                     Spacer(modifier = Modifier.width(10.dp))
 
-                    Column {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
                         Text(
                             text = "${cadet.lastName}, ${cadet.firstName}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text(
                                 text = "Sqn ${cadet.squadron}" + if (cadet.flight.isNotBlank()) " • Flt ${cadet.flight}" else "",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             if (cadet.instrument.isNotBlank()) {
                                 Text(
                                     text = " • ${cadet.instrument}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.secondary
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                     }
                 }
 
+                Spacer(modifier = Modifier.width(8.dp))
+
                 AttendanceStatusBadge(status = status)
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Action Buttons: Present / Absent / Late / Excused
             Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {

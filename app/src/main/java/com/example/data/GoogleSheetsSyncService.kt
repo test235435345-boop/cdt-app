@@ -267,7 +267,18 @@ class GoogleSheetsSyncService(
                 }
             }
 
-            val sortedEvents = events.filter { !it.isCancelled }.sortedBy { it.date }
+            val nonCancelledEvents = events.filter { !it.isCancelled }.sortedBy { it.date }
+            val trainingEvents = nonCancelledEvents.filter {
+                it.type.equals(BandEvent.TYPE_TRAINING_NIGHT, ignoreCase = true) ||
+                        it.title.contains("Training", ignoreCase = true)
+            }.ifEmpty { nonCancelledEvents }
+
+            val bandEvents = nonCancelledEvents.filter {
+                it.type.equals(BandEvent.TYPE_BAND_PRACTICE, ignoreCase = true) ||
+                        it.title.contains("Band", ignoreCase = true) ||
+                        it.title.contains("Practice", ignoreCase = true)
+            }.ifEmpty { nonCancelledEvents.filter { !trainingEvents.contains(it) } }
+
             val recordsMap = records.associateBy { "${it.eventId}_${it.cadetId}" }
             val batchFormatRequests = JSONArray()
 
@@ -276,78 +287,108 @@ class GoogleSheetsSyncService(
                 // Only active cadets (exclude archived / released)
                 val sqCadets = cadets.filter {
                     it.status == Cadet.STATUS_ACTIVE && it.squadron == sq
-                }.sortedWith(compareBy({ it.lastName }, { it.firstName }))
+                }.sortedWith(compareBy({ it.lastName.lowercase(Locale.ROOT) }, { it.firstName.lowercase(Locale.ROOT) }))
 
                 val valuesArray = JSONArray()
 
-                // Row 1: Legend
+                // --- SECTION 1: Training Nights ---
+                // Row 1: Title and exact Legend
                 val legendRow = JSONArray().apply {
-                    put("Legend: ✔ Present   ✖ Absent   ⚠ Absent (Notified)   ⏰ Late   — Excused")
-                    for (i in 1..6) put("")
-                    for (ev in sortedEvents) put("")
-                    put("")
-                    put("")
-                    put("")
+                    put("Training Nights")
+                    put("LEGEND: ✔ = PRESENT; ✖ = ABSENT; ⚠ = ABSENT BUT INFORMED (HAD LET SOMEONE KNOW); ⏰ = LATE")
+                    for (i in 2..6) put("")
+                    for (ev in trainingEvents) put("")
                 }
                 valuesArray.put(legendRow)
 
-                // Row 2: Headers (Columns A-G: Last Name, First Name, Rank, Phone, Email, Flight, Appointment)
+                // Row 2: Headers (Name, Rank, Phone, Email, BAND, Flight, Appointment, then Training Dates)
                 val headerRow = JSONArray().apply {
-                    put("Last Name")
-                    put("First Name")
-                    put("Rank")
-                    put("Phone")
-                    put("Email")
-                    put("Flight")
-                    put("Appointment")
-                    for (ev in sortedEvents) {
-                        put(formatSessionTag(ev))
+                    put("")
+                    put("")
+                    put("")
+                    put("")
+                    put("")
+                    put("")
+                    put("")
+                    for (ev in trainingEvents) {
+                        put(formatSessionDate(ev))
                     }
-                    put("Total Present")
-                    put("Total Sessions")
-                    put("Attendance %")
                 }
                 valuesArray.put(headerRow)
 
-                // Rows 3+: Cadet data
+                // Cadet Data Rows for Training Nights
                 for (cadet in sqCadets) {
                     val row = JSONArray().apply {
-                        put(cadet.lastName)
-                        put(cadet.firstName)
+                        val fullName = "${cadet.lastName} ${cadet.firstName}".trim()
+                        put(fullName)
                         put(cadet.rank)
                         put(cadet.phone)
                         put(cadet.email)
-                        put(cadet.flight)
-                        put(cadet.appointment)
+                        put(if (cadet.squadron.isNotBlank()) "BAND ${cadet.squadron}" else "BAND")
+                        put(cadet.flight.ifBlank { "0" })
+                        put(cadet.appointment.ifBlank { "N/A" })
 
-                        var attended = 0
-                        var totalMarked = 0
-
-                        for (ev in sortedEvents) {
+                        for (ev in trainingEvents) {
                             val rec = recordsMap["${ev.id}_${cadet.id}"]
                             val symbol = getStatusSymbol(rec?.status)
                             put(symbol)
-
-                            val st = rec?.status
-                            if (st == AttendanceRecord.STATUS_PRESENT || st == AttendanceRecord.STATUS_LATE) {
-                                attended++
-                                totalMarked++
-                            } else if (st == AttendanceRecord.STATUS_ABSENT || st == AttendanceRecord.STATUS_ABSENT_NOTIFIED) {
-                                totalMarked++
-                            }
                         }
-
-                        val pct = if (totalMarked > 0) "${((attended.toFloat() / totalMarked) * 100).toInt()}%" else "N/A"
-                        put(attended.toString())
-                        put(totalMarked.toString())
-                        put(pct)
                     }
                     valuesArray.put(row)
                 }
 
-                // Clear previous cells on tab first to remove dangling data
+                // --- SECTION 2: Band Practices ---
+                if (bandEvents.isNotEmpty()) {
+                    // Blank separator row
+                    valuesArray.put(JSONArray().apply { for (i in 0..(6 + bandEvents.size)) put("") })
+
+                    // Section Header
+                    val bpTitleRow = JSONArray().apply {
+                        put("Band Practices")
+                        for (i in 1..(6 + bandEvents.size)) put("")
+                    }
+                    valuesArray.put(bpTitleRow)
+
+                    // Band Practice Dates Header
+                    val bpHeaderRow = JSONArray().apply {
+                        put("")
+                        put("")
+                        put("")
+                        put("")
+                        put("")
+                        put("")
+                        put("")
+                        for (ev in bandEvents) {
+                            put(formatSessionDate(ev))
+                        }
+                    }
+                    valuesArray.put(bpHeaderRow)
+
+                    // Cadet Data Rows for Band Practices
+                    for (cadet in sqCadets) {
+                        val row = JSONArray().apply {
+                            val fullName = "${cadet.lastName} ${cadet.firstName}".trim()
+                            put(fullName)
+                            put(cadet.rank)
+                            put(cadet.phone)
+                            put(cadet.email)
+                            put(if (cadet.squadron.isNotBlank()) "BAND ${cadet.squadron}" else "BAND")
+                            put(cadet.flight.ifBlank { "0" })
+                            put(cadet.appointment.ifBlank { "N/A" })
+
+                            for (ev in bandEvents) {
+                                val rec = recordsMap["${ev.id}_${cadet.id}"]
+                                val symbol = getStatusSymbol(rec?.status)
+                                put(symbol)
+                            }
+                        }
+                        valuesArray.put(row)
+                    }
+                }
+
+                // Clear previous cells on tab first to replace old information in-place
                 val clearReq = Request.Builder()
-                    .url("https://sheets.googleapis.com/v4/spreadsheets/$sheetId/values/'$tabName'!A1:ZZ500:clear")
+                    .url("https://sheets.googleapis.com/v4/spreadsheets/$sheetId/values/'$tabName'!A1:ZZ1000:clear")
                     .addHeader("Authorization", "Bearer $oauthToken")
                     .addHeader("Content-Type", "application/json")
                     .post("{}".toRequestBody("application/json".toMediaType()))
@@ -386,12 +427,12 @@ class GoogleSheetsSyncService(
                     return@withContext Result.failure(Exception("Failed to update cells on $tabName: HTTP ${updateResp.code} - $updateErr"))
                 }
 
-                val totalRows = 2 + sqCadets.size
-                val totalCols = 7 + sortedEvents.size + 3
+                val maxEvents = maxOf(trainingEvents.size, bandEvents.size, 1)
+                val totalCols = 7 + maxEvents
 
                 val tabId = tabSheetIds[tabName]
                 if (tabId != null) {
-                    // 1. Freeze 2 rows (Legend + Header) and 7 columns (Last Name to Appointment)
+                    // Freeze 2 rows and 7 columns
                     batchFormatRequests.put(JSONObject().apply {
                         put("updateSheetProperties", JSONObject().apply {
                             put("properties", JSONObject().apply {
@@ -405,7 +446,7 @@ class GoogleSheetsSyncService(
                         })
                     })
 
-                    // 2. Format Row 1 (Legend)
+                    // Format Row 1 (Title & Legend)
                     batchFormatRequests.put(JSONObject().apply {
                         put("repeatCell", JSONObject().apply {
                             put("range", JSONObject().apply {
@@ -418,18 +459,17 @@ class GoogleSheetsSyncService(
                             put("cell", JSONObject().apply {
                                 put("userEnteredFormat", JSONObject().apply {
                                     put("backgroundColor", JSONObject().apply {
-                                        put("red", 0.91)
-                                        put("green", 0.93)
-                                        put("blue", 0.96)
+                                        put("red", 0.95)
+                                        put("green", 0.96)
+                                        put("blue", 0.98)
                                     })
                                     put("textFormat", JSONObject().apply {
                                         put("bold", true)
-                                        put("italic", true)
                                         put("fontSize", 10)
                                         put("foregroundColor", JSONObject().apply {
-                                            put("red", 0.18)
-                                            put("green", 0.24)
-                                            put("blue", 0.32)
+                                            put("red", 0.1)
+                                            put("green", 0.1)
+                                            put("blue", 0.1)
                                         })
                                     })
                                     put("verticalAlignment", "MIDDLE")
@@ -506,7 +546,9 @@ class GoogleSheetsSyncService(
                         })
                     }
 
-                    // 5. Center-align attendance symbol cells & summary columns
+                    val totalRows = valuesArray.length()
+
+                    // 5. Center-align attendance symbol cells
                     if (sqCadets.isNotEmpty()) {
                         batchFormatRequests.put(JSONObject().apply {
                             put("repeatCell", JSONObject().apply {
@@ -529,13 +571,13 @@ class GoogleSheetsSyncService(
                     }
 
                     // 6. Conditional formatting rules for distinct background & text colors per attendance symbol
-                    if (sortedEvents.isNotEmpty() && sqCadets.isNotEmpty()) {
+                    if (maxEvents > 0 && sqCadets.isNotEmpty()) {
                         val attendanceRange = JSONObject().apply {
                             put("sheetId", tabId)
                             put("startRowIndex", 2)
                             put("endRowIndex", totalRows)
                             put("startColumnIndex", 7)
-                            put("endColumnIndex", 7 + sortedEvents.size)
+                            put("endColumnIndex", totalCols)
                         }
 
                         // Present: ✔ (Soft Green)
@@ -722,8 +764,8 @@ class GoogleSheetsSyncService(
                         })
                     }
 
-                    // Set consistent width for session dates (Cols 7 .. 7 + sortedEvents.size)
-                    for (i in 0 until sortedEvents.size) {
+                    // Set consistent width for session dates (Cols 7 .. 7 + maxEvents)
+                    for (i in 0 until maxEvents) {
                         val sessionColIdx = 7 + i
                         batchFormatRequests.put(JSONObject().apply {
                             put("updateDimensionProperties", JSONObject().apply {
@@ -735,27 +777,6 @@ class GoogleSheetsSyncService(
                                 })
                                 put("properties", JSONObject().apply {
                                     put("pixelSize", 90)
-                                })
-                                put("fields", "pixelSize")
-                            })
-                        })
-                    }
-
-                    // Total Present, Total Sessions, Attendance %
-                    val summaryColStart = 7 + sortedEvents.size
-                    for (s in 0 until 3) {
-                        val sumColIdx = summaryColStart + s
-                        val px = if (s == 2) 105 else 95
-                        batchFormatRequests.put(JSONObject().apply {
-                            put("updateDimensionProperties", JSONObject().apply {
-                                put("range", JSONObject().apply {
-                                    put("sheetId", tabId)
-                                    put("dimension", "COLUMNS")
-                                    put("startIndex", sumColIdx)
-                                    put("endIndex", sumColIdx + 1)
-                                })
-                                put("properties", JSONObject().apply {
-                                    put("pixelSize", px)
                                 })
                                 put("fields", "pixelSize")
                             })
@@ -974,15 +995,19 @@ class GoogleSheetsSyncService(
         }
     }
 
-    private fun formatSessionTag(event: BandEvent): String {
-        val dateLabel = try {
+    private fun formatSessionDate(event: BandEvent): String {
+        return try {
             val inSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val outSdf = SimpleDateFormat("MMM d", Locale.US)
+            val outSdf = SimpleDateFormat("MMMM d", Locale.US)
             val d = inSdf.parse(event.date)
             if (d != null) outSdf.format(d) else event.date
         } catch (e: Exception) {
             event.date
         }
+    }
+
+    private fun formatSessionTag(event: BandEvent): String {
+        val dateLabel = formatSessionDate(event)
         val typeTag = when (event.type) {
             BandEvent.TYPE_TRAINING_NIGHT -> "TN"
             BandEvent.TYPE_BAND_PRACTICE -> "BP"
@@ -999,7 +1024,7 @@ class GoogleSheetsSyncService(
             AttendanceRecord.STATUS_ABSENT -> "✖"
             AttendanceRecord.STATUS_ABSENT_NOTIFIED -> "⚠"
             AttendanceRecord.STATUS_LATE -> "⏰"
-            AttendanceRecord.STATUS_EXCUSED -> "—"
+            AttendanceRecord.STATUS_EXCUSED -> "N/A"
             else -> ""
         }
     }

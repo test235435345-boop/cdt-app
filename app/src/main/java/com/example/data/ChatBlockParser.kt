@@ -186,6 +186,92 @@ object ChatBlockParser {
                 val code = obj.optString("code", obj.optString("text", ""))
                 if (code.isNotBlank()) ChatBlock.CodeBlock(language, code) else null
             }
+            "comparison_card", "comparison", "compare" -> {
+                val title = obj.optString("title", "")
+                val metricLabel = obj.optString("metricLabel", obj.optString("metric", ""))
+                val leftObj = obj.optJSONObject("leftItem") ?: obj.optJSONObject("left") ?: JSONObject()
+                val rightObj = obj.optJSONObject("rightItem") ?: obj.optJSONObject("right") ?: JSONObject()
+
+                val leftItem = ChatBlock.ComparisonItem(
+                    title = leftObj.optString("title", leftObj.optString("name", "Option A")),
+                    value = leftObj.optString("value", "0"),
+                    subtext = leftObj.optString("subtext", leftObj.optString("subtitle", "")),
+                    isHighlighted = leftObj.optBoolean("isHighlighted", false)
+                )
+                val rightItem = ChatBlock.ComparisonItem(
+                    title = rightObj.optString("title", rightObj.optString("name", "Option B")),
+                    value = rightObj.optString("value", "0"),
+                    subtext = rightObj.optString("subtext", rightObj.optString("subtitle", "")),
+                    isHighlighted = rightObj.optBoolean("isHighlighted", false)
+                )
+                val diffText = obj.optString("diffText", obj.optString("difference", obj.optString("diff", "")))
+                val winnerSide = obj.optString("winnerSide", obj.optString("winner", "")).lowercase()
+
+                ChatBlock.ComparisonCardBlock(
+                    title = title,
+                    metricLabel = metricLabel,
+                    leftItem = leftItem,
+                    rightItem = rightItem,
+                    diffText = diffText,
+                    winnerSide = winnerSide
+                )
+            }
+            "leaderboard", "rankings", "ranking", "top_list" -> {
+                val title = obj.optString("title", "Attendance Leaderboard")
+                val subtitle = obj.optString("subtitle", "")
+                val entriesArr = obj.optJSONArray("entries") ?: obj.optJSONArray("items") ?: JSONArray()
+                val entries = mutableListOf<ChatBlock.LeaderboardEntry>()
+
+                for (j in 0 until entriesArr.length()) {
+                    val eObj = entriesArr.optJSONObject(j) ?: continue
+                    entries.add(
+                        ChatBlock.LeaderboardEntry(
+                            rank = eObj.optInt("rank", j + 1),
+                            title = eObj.optString("title", eObj.optString("name", "Cadet")),
+                            subtitle = eObj.optString("subtitle", eObj.optString("squadron", "")),
+                            score = eObj.optString("score", eObj.optString("value", "")),
+                            badge = eObj.optString("badge", eObj.optString("status", "")),
+                            isFlagged = eObj.optBoolean("isFlagged", false),
+                            cadetId = eObj.optString("cadetId", "")
+                        )
+                    )
+                }
+                if (entries.isNotEmpty() || title.isNotBlank()) {
+                    ChatBlock.LeaderboardBlock(title, subtitle, entries)
+                } else null
+            }
+            "alert_banner", "alert", "callout", "banner", "warning_banner" -> {
+                val title = obj.optString("title", "")
+                val message = obj.optString("message", obj.optString("text", obj.optString("content", "")))
+                val severity = obj.optString("severity", obj.optString("type_level", "warning")).lowercase()
+                val actionText = obj.optString("actionText", obj.optString("action", ""))
+
+                if (message.isNotBlank() || title.isNotBlank()) {
+                    ChatBlock.AlertBannerBlock(title, message, severity, actionText)
+                } else null
+            }
+            "quick_action", "quick_actions", "actions", "action_buttons" -> {
+                val title = obj.optString("title", "")
+                val actionsArr = obj.optJSONArray("actions") ?: obj.optJSONArray("buttons") ?: JSONArray()
+                val actions = mutableListOf<ChatBlock.QuickActionItem>()
+
+                for (j in 0 until actionsArr.length()) {
+                    val aObj = actionsArr.optJSONObject(j)
+                    if (aObj != null) {
+                        actions.add(
+                            ChatBlock.QuickActionItem(
+                                label = aObj.optString("label", aObj.optString("title", "Action")),
+                                targetScreen = aObj.optString("targetScreen", aObj.optString("screen", aObj.optString("target", "attendance"))),
+                                targetParam = aObj.optString("targetParam", aObj.optString("param", aObj.optString("id", ""))),
+                                iconName = aObj.optString("iconName", aObj.optString("icon", ""))
+                            )
+                        )
+                    }
+                }
+                if (actions.isNotEmpty()) {
+                    ChatBlock.QuickActionBlock(title, actions)
+                } else null
+            }
             "divider", "hr" -> {
                 ChatBlock.DividerBlock
             }
@@ -416,6 +502,20 @@ object ChatBlockParser {
                 }
                 is ChatBlock.QuoteBlock -> sb.append("> ${block.text}\n\n")
                 is ChatBlock.CodeBlock -> sb.append("${block.code}\n\n")
+                is ChatBlock.ComparisonCardBlock -> {
+                    sb.append("Comparison: ${block.leftItem.title} (${block.leftItem.value}) vs ${block.rightItem.title} (${block.rightItem.value})\n\n")
+                }
+                is ChatBlock.LeaderboardBlock -> {
+                    sb.append("${block.title}:\n")
+                    block.entries.forEach { sb.append("${it.rank}. ${it.title} - ${it.score} (${it.subtitle})\n") }
+                    sb.append("\n")
+                }
+                is ChatBlock.AlertBannerBlock -> {
+                    sb.append("[${block.severity.uppercase()}] ${block.title}: ${block.message}\n\n")
+                }
+                is ChatBlock.QuickActionBlock -> {
+                    sb.append("Actions: ${block.actions.joinToString(" | ") { it.label }}\n\n")
+                }
                 is ChatBlock.DividerBlock -> sb.append("---\n\n")
             }
         }

@@ -268,6 +268,9 @@ fun CadetTrackApp(
     val isSheetsSyncing by viewModel.isSheetsSyncing.collectAsState()
     val syncMessage by viewModel.syncMessage.collectAsState()
 
+    val isPdfGenerating by viewModel.isPdfGenerating.collectAsState()
+    val lastPdfUpdated by viewModel.lastPdfUpdated.collectAsState()
+
     val themeMode by viewModel.themeMode.collectAsState()
 
     val squadronReports = viewModel.getSquadronReports()
@@ -508,6 +511,11 @@ fun CadetTrackApp(
                     onExportCsv = { squadron ->
                         viewModel.exportToCsv(squadron)
                     },
+                    isPdfGenerating = isPdfGenerating,
+                    lastPdfUpdated = lastPdfUpdated,
+                    onGenerateOrUpdatePdf = { viewModel.generateOrUpdatePdf() },
+                    onOpenPdf = { viewModel.openCanonicalPdf(activity) },
+                    onSharePdf = { viewModel.shareCanonicalPdf(activity) },
                     onStartNewYear = { newYearLabel, onDone ->
                         activity.requestGoogleOAuth { token ->
                             viewModel.startNewTrainingYear(token, newYearLabel, onDone)

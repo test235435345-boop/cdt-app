@@ -502,7 +502,8 @@ fun AttendanceScreen(
                             },
                             onOpenProfile = {
                                 selectedCadetForProfile = cadet
-                            }
+                            },
+                            modifier = Modifier.animateItem()
                         )
                     }
                     item {

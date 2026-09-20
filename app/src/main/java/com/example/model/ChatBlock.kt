@@ -73,5 +73,56 @@ sealed class ChatBlock {
         val code: String = ""
     ) : ChatBlock()
 
+    data class ComparisonItem(
+        val title: String,
+        val value: String,
+        val subtext: String = "",
+        val isHighlighted: Boolean = false
+    )
+
+    data class ComparisonCardBlock(
+        val title: String = "",
+        val metricLabel: String = "",
+        val leftItem: ComparisonItem,
+        val rightItem: ComparisonItem,
+        val diffText: String = "",
+        val winnerSide: String = "" // "left", "right", or ""
+    ) : ChatBlock()
+
+    data class LeaderboardEntry(
+        val rank: Int,
+        val title: String,
+        val subtitle: String = "",
+        val score: String,
+        val badge: String = "",
+        val isFlagged: Boolean = false,
+        val cadetId: String = ""
+    )
+
+    data class LeaderboardBlock(
+        val title: String = "Leaderboard",
+        val subtitle: String = "",
+        val entries: List<LeaderboardEntry> = emptyList()
+    ) : ChatBlock()
+
+    data class AlertBannerBlock(
+        val title: String = "",
+        val message: String,
+        val severity: String = "warning", // "warning", "danger", "success", "info"
+        val actionText: String = ""
+    ) : ChatBlock()
+
+    data class QuickActionItem(
+        val label: String,
+        val targetScreen: String, // "attendance", "cadets", "reports", "cadet_profile"
+        val targetParam: String = "",
+        val iconName: String = ""
+    )
+
+    data class QuickActionBlock(
+        val title: String = "",
+        val actions: List<QuickActionItem> = emptyList()
+    ) : ChatBlock()
+
     data object DividerBlock : ChatBlock()
 }

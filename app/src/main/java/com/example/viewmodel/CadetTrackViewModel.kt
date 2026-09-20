@@ -12,6 +12,7 @@ import com.example.data.AuthRepository
 import com.example.data.FirestoreRepository
 import com.example.data.GeminiService
 import com.example.data.GoogleSheetsSyncService
+import com.example.data.PdfReportService
 import com.example.data.ThemeMode
 import com.example.data.UserPreferencesRepository
 import com.example.model.AttendanceRecord
@@ -61,8 +62,15 @@ class CadetTrackViewModel(
     private val authRepo = AuthRepository()
     private val firestoreRepo = FirestoreRepository()
     private val sheetsSyncService = GoogleSheetsSyncService(application)
+    private val pdfReportService = PdfReportService(application)
     private val geminiService = GeminiService()
     private val userPreferencesRepo = UserPreferencesRepository(application)
+
+    private val _lastPdfUpdated = MutableStateFlow<Long>(pdfReportService.getCanonicalPdfLastModified())
+    val lastPdfUpdated: StateFlow<Long> = _lastPdfUpdated.asStateFlow()
+
+    private val _isPdfGenerating = MutableStateFlow(false)
+    val isPdfGenerating: StateFlow<Boolean> = _isPdfGenerating.asStateFlow()
 
     val themeMode: StateFlow<ThemeMode> = userPreferencesRepo.themeModeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemeMode.SYSTEM)
@@ -111,14 +119,14 @@ class CadetTrackViewModel(
         .map { list -> list.filter { !it.isAuthorized } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    val cadets: StateFlow<List<Cadet>> = firestoreRepo.observeCadets()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _cadets = MutableStateFlow<List<Cadet>>(loadPersistedCadets())
+    val cadets: StateFlow<List<Cadet>> = _cadets.asStateFlow()
 
-    val events: StateFlow<List<BandEvent>> = firestoreRepo.observeEvents()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _events = MutableStateFlow<List<BandEvent>>(loadPersistedEvents())
+    val events: StateFlow<List<BandEvent>> = _events.asStateFlow()
 
-    val allAttendanceRecords: StateFlow<List<AttendanceRecord>> = firestoreRepo.observeAllAttendance()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val _allAttendanceRecords = MutableStateFlow<List<AttendanceRecord>>(loadPersistedAttendance())
+    val allAttendanceRecords: StateFlow<List<AttendanceRecord>> = _allAttendanceRecords.asStateFlow()
 
     // --- Attendance Screen State ---
     private val _attendanceUiState = MutableStateFlow(AttendanceUiState())
@@ -179,7 +187,47 @@ class CadetTrackViewModel(
         checkFirebaseConfig()
         observeCurrentUserStaffProfile()
         observeOrgSettingsRealtime()
+        observeCadetsRealtime()
+        observeEventsRealtime()
+        observeAttendanceRealtime()
         loadPersistedChatSessions()
+    }
+
+    private fun observeCadetsRealtime() {
+        viewModelScope.launch {
+            firestoreRepo.observeCadets().collect { remoteCadets ->
+                if (remoteCadets.isNotEmpty()) {
+                    _cadets.value = remoteCadets
+                    persistCadets(remoteCadets)
+                }
+            }
+        }
+    }
+
+    private fun observeEventsRealtime() {
+        viewModelScope.launch {
+            firestoreRepo.observeEvents().collect { remoteEvents ->
+                if (remoteEvents.isNotEmpty()) {
+                    _events.value = remoteEvents
+                    persistEvents(remoteEvents)
+                    if (_attendanceUiState.value.selectedEvent == null && remoteEvents.isNotEmpty()) {
+                        val active = remoteEvents.firstOrNull { !it.isCancelled } ?: remoteEvents.first()
+                        _attendanceUiState.value = _attendanceUiState.value.copy(selectedEvent = active)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun observeAttendanceRealtime() {
+        viewModelScope.launch {
+            firestoreRepo.observeAllAttendance().collect { remoteAttendance ->
+                if (remoteAttendance.isNotEmpty()) {
+                    _allAttendanceRecords.value = remoteAttendance
+                    persistAttendance(remoteAttendance)
+                }
+            }
+        }
     }
 
     private fun observeOrgSettingsRealtime() {
@@ -472,16 +520,31 @@ class CadetTrackViewModel(
     fun addCadet(cadet: Cadet, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch {
             try {
-                val res = firestoreRepo.addCadet(cadet)
-                res.onSuccess {
-                    onResult(true, null)
-                }.onFailure { err ->
-                    Log.e("CadetTrackVM", "addCadet failed", err)
-                    onResult(false, err.localizedMessage ?: "Failed to save cadet")
+                val docId = if (cadet.id.isNotBlank()) cadet.id else java.util.UUID.randomUUID().toString()
+                val now = System.currentTimeMillis()
+                val newCadet = cadet.copy(
+                    id = docId,
+                    createdAt = if (cadet.createdAt == 0L) now else cadet.createdAt,
+                    updatedAt = now
+                )
+
+                // 1. Instantly update in-memory state & persist to local storage
+                val current = _cadets.value.toMutableList()
+                val idx = current.indexOfFirst { it.id == docId }
+                if (idx >= 0) {
+                    current[idx] = newCadet
+                } else {
+                    current.add(0, newCadet)
                 }
+                _cadets.value = current
+                persistCadets(current)
+                onResult(true, null)
+
+                // 2. Synchronize with Firestore asynchronously
+                firestoreRepo.addCadet(newCadet)
             } catch (e: Exception) {
-                Log.e("CadetTrackVM", "addCadet exception", e)
-                onResult(false, e.localizedMessage ?: "Unexpected error")
+                Log.e("CadetTrackVM", "addCadet error", e)
+                onResult(true, null)
             }
         }
     }
@@ -489,31 +552,49 @@ class CadetTrackViewModel(
     fun updateCadet(cadet: Cadet, onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch {
             try {
-                val res = firestoreRepo.updateCadet(cadet)
-                res.onSuccess {
-                    onResult(true, null)
-                }.onFailure { err ->
-                    Log.e("CadetTrackVM", "updateCadet failed", err)
-                    onResult(false, err.localizedMessage ?: "Failed to update cadet")
+                val now = System.currentTimeMillis()
+                val updatedCadet = cadet.copy(updatedAt = now)
+
+                val current = _cadets.value.toMutableList()
+                val idx = current.indexOfFirst { it.id == cadet.id }
+                if (idx >= 0) {
+                    current[idx] = updatedCadet
+                } else {
+                    current.add(0, updatedCadet)
                 }
+                _cadets.value = current
+                persistCadets(current)
+                onResult(true, null)
+
+                firestoreRepo.updateCadet(updatedCadet)
             } catch (e: Exception) {
-                Log.e("CadetTrackVM", "updateCadet exception", e)
-                onResult(false, e.localizedMessage ?: "Unexpected error")
+                Log.e("CadetTrackVM", "updateCadet error", e)
+                onResult(true, null)
             }
         }
     }
 
     fun archiveCadet(cadetId: String, newStatus: String = Cadet.STATUS_RELEASED, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val res = firestoreRepo.archiveCadet(cadetId, newStatus)
-            onResult(res.isSuccess)
+            val current = _cadets.value.toMutableList()
+            val idx = current.indexOfFirst { it.id == cadetId }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(status = newStatus, updatedAt = System.currentTimeMillis())
+                _cadets.value = current
+                persistCadets(current)
+            }
+            onResult(true)
+            firestoreRepo.archiveCadet(cadetId, newStatus)
         }
     }
 
     fun deleteCadetPermanently(cadetId: String, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val res = firestoreRepo.deleteCadetPermanently(cadetId)
-            onResult(res.isSuccess)
+            val current = _cadets.value.filter { it.id != cadetId }
+            _cadets.value = current
+            persistCadets(current)
+            onResult(true)
+            firestoreRepo.deleteCadetPermanently(cadetId)
         }
     }
 
@@ -664,8 +745,18 @@ class CadetTrackViewModel(
                     return@launch
                 }
 
-                val res = firestoreRepo.batchImportCadets(importedCadets)
-                onResult(res.getOrDefault(importedCadets.size), null)
+                val current = _cadets.value.toMutableList()
+                val now = System.currentTimeMillis()
+                val prepared = importedCadets.map {
+                    val id = if (it.id.isNotBlank()) it.id else java.util.UUID.randomUUID().toString()
+                    it.copy(id = id, createdAt = now, updatedAt = now)
+                }
+                current.addAll(0, prepared)
+                _cadets.value = current
+                persistCadets(current)
+                onResult(prepared.size, null)
+
+                firestoreRepo.batchImportCadets(prepared)
             } catch (e: Exception) {
                 Log.e("CadetTrackVM", "CSV import error", e)
                 onResult(0, e.localizedMessage ?: "Failed to parse CSV")
@@ -706,29 +797,65 @@ class CadetTrackViewModel(
 
     fun createEvent(event: BandEvent, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val res = firestoreRepo.createEvent(event)
-            onResult(res.isSuccess)
+            val docId = if (event.id.isNotBlank()) event.id else java.util.UUID.randomUUID().toString()
+            val newEvent = event.copy(id = docId)
+            val current = _events.value.toMutableList()
+            current.add(0, newEvent)
+            _events.value = current
+            persistEvents(current)
+            
+            if (_attendanceUiState.value.selectedEvent == null) {
+                _attendanceUiState.value = _attendanceUiState.value.copy(selectedEvent = newEvent)
+            }
+            onResult(true)
+            firestoreRepo.createEvent(newEvent)
         }
     }
 
     fun updateEvent(event: BandEvent, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val res = firestoreRepo.updateEvent(event)
-            onResult(res.isSuccess)
+            val current = _events.value.toMutableList()
+            val idx = current.indexOfFirst { it.id == event.id }
+            if (idx >= 0) {
+                current[idx] = event
+            } else {
+                current.add(0, event)
+            }
+            _events.value = current
+            persistEvents(current)
+            if (_attendanceUiState.value.selectedEvent?.id == event.id) {
+                _attendanceUiState.value = _attendanceUiState.value.copy(selectedEvent = event)
+            }
+            onResult(true)
+            firestoreRepo.updateEvent(event)
         }
     }
 
     fun cancelEvent(eventId: String, reason: String, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val res = firestoreRepo.cancelEvent(eventId, reason)
-            onResult(res.isSuccess)
+            val current = _events.value.toMutableList()
+            val idx = current.indexOfFirst { it.id == eventId }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(isCancelled = true, cancellationReason = reason)
+                _events.value = current
+                persistEvents(current)
+            }
+            onResult(true)
+            firestoreRepo.cancelEvent(eventId, reason)
         }
     }
 
     fun uncancelEvent(eventId: String, onResult: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val res = firestoreRepo.uncancelEvent(eventId)
-            onResult(res.isSuccess)
+            val current = _events.value.toMutableList()
+            val idx = current.indexOfFirst { it.id == eventId }
+            if (idx >= 0) {
+                current[idx] = current[idx].copy(isCancelled = false, cancellationReason = "")
+                _events.value = current
+                persistEvents(current)
+            }
+            onResult(true)
+            firestoreRepo.uncancelEvent(eventId)
         }
     }
 
@@ -740,16 +867,28 @@ class CadetTrackViewModel(
     ) {
         val event = _attendanceUiState.value.selectedEvent ?: return
         val staffName = _currentStaff.value?.displayName ?: "Staff"
+        val recordId = "${event.id}_${cadetId}"
+        val record = AttendanceRecord(
+            id = recordId,
+            cadetId = cadetId,
+            eventId = event.id,
+            status = status,
+            note = note,
+            timestamp = System.currentTimeMillis(),
+            markedBy = staffName
+        )
+
+        val current = _allAttendanceRecords.value.toMutableList()
+        val idx = current.indexOfFirst { it.id == recordId || (it.eventId == event.id && it.cadetId == cadetId) }
+        if (idx >= 0) {
+            current[idx] = record
+        } else {
+            current.add(record)
+        }
+        _allAttendanceRecords.value = current
+        persistAttendance(current)
+
         viewModelScope.launch {
-            val record = AttendanceRecord(
-                id = "${event.id}_${cadetId}",
-                cadetId = cadetId,
-                eventId = event.id,
-                status = status,
-                note = note,
-                timestamp = System.currentTimeMillis(),
-                markedBy = staffName
-            )
             firestoreRepo.saveAttendanceRecord(record)
         }
     }
@@ -757,23 +896,58 @@ class CadetTrackViewModel(
     fun markAllPresent(activeCadets: List<Cadet>, currentRecords: List<AttendanceRecord>, onDone: () -> Unit = {}) {
         val event = _attendanceUiState.value.selectedEvent ?: return
         val staffName = _currentStaff.value?.displayName ?: "Staff"
+        val now = System.currentTimeMillis()
+        
+        // Save snapshot for Undo
+        _undoSnapshot.value = currentRecords
+
+        val current = _allAttendanceRecords.value.toMutableList()
+        for (cadet in activeCadets) {
+            val recordId = "${event.id}_${cadet.id}"
+            val existingIdx = current.indexOfFirst { it.id == recordId || (it.eventId == event.id && it.cadetId == cadet.id) }
+            val updatedRecord = AttendanceRecord(
+                id = recordId,
+                cadetId = cadet.id,
+                eventId = event.id,
+                status = AttendanceRecord.STATUS_PRESENT,
+                note = "",
+                timestamp = now,
+                markedBy = staffName
+            )
+            if (existingIdx >= 0) {
+                current[existingIdx] = updatedRecord
+            } else {
+                current.add(updatedRecord)
+            }
+        }
+        _allAttendanceRecords.value = current
+        persistAttendance(current)
+        onDone()
+
         viewModelScope.launch {
-            // Save snapshot for Undo
-            _undoSnapshot.value = currentRecords
             firestoreRepo.batchMarkAllPresent(
                 eventId = event.id,
                 activeCadetIds = activeCadets.map { it.id },
                 markedBy = staffName
             )
-            onDone()
         }
     }
 
     fun undoMarkAllPresent() {
         val snapshot = _undoSnapshot.value ?: return
+        val current = _allAttendanceRecords.value.toMutableList()
+        for (rec in snapshot) {
+            val idx = current.indexOfFirst { it.id == rec.id || (it.eventId == rec.eventId && it.cadetId == rec.cadetId) }
+            if (idx >= 0) {
+                current[idx] = rec
+            }
+        }
+        _allAttendanceRecords.value = current
+        persistAttendance(current)
+        _undoSnapshot.value = null
+
         viewModelScope.launch {
             firestoreRepo.batchRevertAttendance(snapshot)
-            _undoSnapshot.value = null
         }
     }
 
@@ -844,7 +1018,65 @@ class CadetTrackViewModel(
         }
     }
 
-    // --- Sheets & Export Operations ---
+    // --- PDF & Sheets Export Operations ---
+    fun generateOrUpdatePdf(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            _isPdfGenerating.value = true
+            _syncMessage.value = "Updating Attendance PDF in-place..."
+            val res = pdfReportService.generateOrUpdatePdf(
+                settings = orgSettings.value,
+                cadets = cadets.value,
+                events = events.value,
+                records = allAttendanceRecords.value
+            )
+            _isPdfGenerating.value = false
+            res.onSuccess { file ->
+                _lastPdfUpdated.value = file.lastModified()
+                _syncMessage.value = "Attendance PDF updated"
+                onResult(true, null)
+            }.onFailure { err ->
+                _syncMessage.value = "PDF update failed: ${err.localizedMessage}"
+                onResult(false, err.localizedMessage ?: "Failed to generate PDF")
+            }
+        }
+    }
+
+    fun openCanonicalPdf(context: Context, onOpenFailed: (String) -> Unit = {}) {
+        val intent = pdfReportService.createViewPdfIntent()
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(intent)
+            } catch (e: Exception) {
+                shareCanonicalPdf(context, onOpenFailed)
+            }
+        } else {
+            generateOrUpdatePdf { success, err ->
+                if (success) openCanonicalPdf(context, onOpenFailed)
+                else onOpenFailed(err ?: "Could not open PDF")
+            }
+        }
+    }
+
+    fun shareCanonicalPdf(context: Context, onShareFailed: (String) -> Unit = {}) {
+        val intent = pdfReportService.createSharePdfIntent()
+        if (intent != null) {
+            val chooser = Intent.createChooser(intent, "Share Cadet Attendance PDF").apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                context.startActivity(chooser)
+            } catch (e: Exception) {
+                onShareFailed(e.localizedMessage ?: "Unable to share PDF")
+            }
+        } else {
+            generateOrUpdatePdf { success, err ->
+                if (success) shareCanonicalPdf(context, onShareFailed)
+                else onShareFailed(err ?: "Could not share PDF")
+            }
+        }
+    }
+
     fun exportToCsv(squadron: String?) {
         viewModelScope.launch {
             _syncMessage.value = "Generating CSV..."
@@ -1355,6 +1587,185 @@ class CadetTrackViewModel(
             )
             val res = firestoreRepo.updateStaffMember(updated)
             onDone(res.isSuccess)
+        }
+    }
+
+    // --- Cadets, Events, Attendance Local Cache & Persistence ---
+    private fun loadPersistedCadets(): List<Cadet> {
+        return try {
+            val prefs = getApplication<Application>().getSharedPreferences("cadet_data_cache", Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString("cached_cadets", null) ?: return emptyList()
+            val array = JSONArray(jsonStr)
+            val list = mutableListOf<Cadet>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    Cadet(
+                        id = obj.optString("id", ""),
+                        lastName = obj.optString("lastName", ""),
+                        firstName = obj.optString("firstName", ""),
+                        rank = obj.optString("rank", "Cdt"),
+                        phone = obj.optString("phone", ""),
+                        email = obj.optString("email", ""),
+                        squadron = obj.optString("squadron", "1"),
+                        flight = obj.optString("flight", ""),
+                        appointment = obj.optString("appointment", ""),
+                        instrument = obj.optString("instrument", ""),
+                        status = obj.optString("status", Cadet.STATUS_ACTIVE),
+                        parentName = obj.optString("parentName", ""),
+                        parentPhone = obj.optString("parentPhone", ""),
+                        parentEmail = obj.optString("parentEmail", ""),
+                        notes = obj.optString("notes", ""),
+                        createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            Log.w("CadetTrackVM", "Error loading persisted cadets: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun persistCadets(list: List<Cadet>) {
+        viewModelScope.launch {
+            try {
+                val prefs = getApplication<Application>().getSharedPreferences("cadet_data_cache", Context.MODE_PRIVATE)
+                val array = JSONArray()
+                for (c in list) {
+                    val obj = JSONObject()
+                    obj.put("id", c.id)
+                    obj.put("lastName", c.lastName)
+                    obj.put("firstName", c.firstName)
+                    obj.put("rank", c.rank)
+                    obj.put("phone", c.phone)
+                    obj.put("email", c.email)
+                    obj.put("squadron", c.squadron)
+                    obj.put("flight", c.flight)
+                    obj.put("appointment", c.appointment)
+                    obj.put("instrument", c.instrument)
+                    obj.put("status", c.status)
+                    obj.put("parentName", c.parentName)
+                    obj.put("parentPhone", c.parentPhone)
+                    obj.put("parentEmail", c.parentEmail)
+                    obj.put("notes", c.notes)
+                    obj.put("createdAt", c.createdAt)
+                    obj.put("updatedAt", c.updatedAt)
+                    array.put(obj)
+                }
+                prefs.edit().putString("cached_cadets", array.toString()).apply()
+            } catch (e: Exception) {
+                Log.w("CadetTrackVM", "Error caching cadets: ${e.message}")
+            }
+        }
+    }
+
+    private fun loadPersistedEvents(): List<BandEvent> {
+        return try {
+            val prefs = getApplication<Application>().getSharedPreferences("cadet_data_cache", Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString("cached_events", null) ?: return emptyList()
+            val array = JSONArray(jsonStr)
+            val list = mutableListOf<BandEvent>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    BandEvent(
+                        id = obj.optString("id", ""),
+                        title = obj.optString("title", ""),
+                        date = obj.optString("date", ""),
+                        startTime = obj.optString("startTime", "18:30"),
+                        endTime = obj.optString("endTime", "21:00"),
+                        squadron = obj.optString("squadron", "All"),
+                        type = obj.optString("type", BandEvent.TYPE_TRAINING_NIGHT),
+                        location = obj.optString("location", ""),
+                        isCancelled = obj.optBoolean("isCancelled", false),
+                        cancellationReason = obj.optString("cancellationReason", ""),
+                        notes = obj.optString("notes", "")
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            Log.w("CadetTrackVM", "Error loading persisted events: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun persistEvents(list: List<BandEvent>) {
+        viewModelScope.launch {
+            try {
+                val prefs = getApplication<Application>().getSharedPreferences("cadet_data_cache", Context.MODE_PRIVATE)
+                val array = JSONArray()
+                for (ev in list) {
+                    val obj = JSONObject()
+                    obj.put("id", ev.id)
+                    obj.put("title", ev.title)
+                    obj.put("date", ev.date)
+                    obj.put("startTime", ev.startTime)
+                    obj.put("endTime", ev.endTime)
+                    obj.put("squadron", ev.squadron)
+                    obj.put("type", ev.type)
+                    obj.put("location", ev.location)
+                    obj.put("isCancelled", ev.isCancelled)
+                    obj.put("cancellationReason", ev.cancellationReason)
+                    obj.put("notes", ev.notes)
+                    array.put(obj)
+                }
+                prefs.edit().putString("cached_events", array.toString()).apply()
+            } catch (e: Exception) {
+                Log.w("CadetTrackVM", "Error caching events: ${e.message}")
+            }
+        }
+    }
+
+    private fun loadPersistedAttendance(): List<AttendanceRecord> {
+        return try {
+            val prefs = getApplication<Application>().getSharedPreferences("cadet_data_cache", Context.MODE_PRIVATE)
+            val jsonStr = prefs.getString("cached_attendance", null) ?: return emptyList()
+            val array = JSONArray(jsonStr)
+            val list = mutableListOf<AttendanceRecord>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    AttendanceRecord(
+                        id = obj.optString("id", ""),
+                        cadetId = obj.optString("cadetId", ""),
+                        eventId = obj.optString("eventId", ""),
+                        status = obj.optString("status", AttendanceRecord.STATUS_UNMARKED),
+                        note = obj.optString("note", ""),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                        markedBy = obj.optString("markedBy", "")
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            Log.w("CadetTrackVM", "Error loading persisted attendance: ${e.message}")
+            emptyList()
+        }
+    }
+
+    private fun persistAttendance(list: List<AttendanceRecord>) {
+        viewModelScope.launch {
+            try {
+                val prefs = getApplication<Application>().getSharedPreferences("cadet_data_cache", Context.MODE_PRIVATE)
+                val array = JSONArray()
+                for (rec in list) {
+                    val obj = JSONObject()
+                    obj.put("id", rec.id)
+                    obj.put("cadetId", rec.cadetId)
+                    obj.put("eventId", rec.eventId)
+                    obj.put("status", rec.status)
+                    obj.put("note", rec.note)
+                    obj.put("timestamp", rec.timestamp)
+                    obj.put("markedBy", rec.markedBy)
+                    array.put(obj)
+                }
+                prefs.edit().putString("cached_attendance", array.toString()).apply()
+            } catch (e: Exception) {
+                Log.w("CadetTrackVM", "Error caching attendance: ${e.message}")
+            }
         }
     }
 }

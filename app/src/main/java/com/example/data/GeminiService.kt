@@ -90,9 +90,13 @@ class GeminiService {
         contextBuilder.append("7. `stat_card`: { \"type\": \"stat_card\", \"value\": \"84%\", \"label\": \"845 Squadron Attendance\", \"subtext\": \"Above target\", \"isPositive\": true|false|null }\n")
         contextBuilder.append("8. `trend_chart`: { \"type\": \"trend_chart\", \"title\": \"Attendance Trend\", \"subtitle\": \"Last 5 Sessions\", \"threshold\": 75, \"dataPoints\": [{\"label\": \"Aug 1\", \"value\": 80}, {\"label\": \"Aug 8\", \"value\": 90}] }\n")
         contextBuilder.append("9. `cadet_chip`: { \"type\": \"cadet_chip\", \"cadetId\": \"...\", \"cadetName\": \"Last, First\", \"rank\": \"Sgt\", \"squadron\": \"845\", \"info\": \"92% Attendance\" }\n")
-        contextBuilder.append("10. `quote`: { \"type\": \"quote\", \"text\": \"...\", \"source\": \"...\" }\n")
-        contextBuilder.append("11. `code_block`: { \"type\": \"code_block\", \"language\": \"csv\", \"code\": \"...\" }\n")
-        contextBuilder.append("12. `divider`: { \"type\": \"divider\" }\n\n")
+        contextBuilder.append("10. `comparison_card`: { \"type\": \"comparison_card\", \"title\": \"Squadron Attendance Comparison\", \"metricLabel\": \"Attendance Rate\", \"leftItem\": { \"title\": \"Sqn 845\", \"value\": \"88%\", \"subtext\": \"18 Cadets\", \"isHighlighted\": true }, \"rightItem\": { \"title\": \"Sqn 746\", \"value\": \"76%\", \"subtext\": \"14 Cadets\", \"isHighlighted\": false }, \"diffText\": \"+12% higher in Sqn 845\", \"winnerSide\": \"left\" }\n")
+        contextBuilder.append("11. `leaderboard`: { \"type\": \"leaderboard\", \"title\": \"Top Attendance Cadets\", \"subtitle\": \"Ranked by 2026 participation\", \"entries\": [ { \"rank\": 1, \"title\": \"Sgt Smith, John\", \"subtitle\": \"Sqn 845 • 12/12 Events\", \"score\": \"100%\", \"badge\": \"Perfect\", \"isFlagged\": false, \"cadetId\": \"...\" }, { \"rank\": 2, \"title\": \"Cpl Doe, Jane\", \"subtitle\": \"Sqn 746 • 11/12 Events\", \"score\": \"92%\", \"badge\": \"High Attendance\", \"isFlagged\": false, \"cadetId\": \"...\" } ] }\n")
+        contextBuilder.append("12. `alert_banner`: { \"type\": \"alert_banner\", \"title\": \"Attendance Alert\", \"message\": \"3 cadets have fallen below the 75% training threshold\", \"severity\": \"warning|danger|success|info\", \"actionText\": \"View Flagged Cadets\" }\n")
+        contextBuilder.append("13. `quick_action`: { \"type\": \"quick_action\", \"title\": \"Suggested Actions\", \"actions\": [ { \"label\": \"Take Tonight's Attendance\", \"targetScreen\": \"attendance\", \"targetParam\": \"\", \"iconName\": \"check\" }, { \"label\": \"View Roster\", \"targetScreen\": \"cadets\", \"targetParam\": \"\", \"iconName\": \"person\" }, { \"label\": \"View Reports & Sync\", \"targetScreen\": \"reports\", \"targetParam\": \"\", \"iconName\": \"chart\" } ] } (Valid targetScreens: 'attendance', 'cadets', 'reports', 'cadet_profile')\n")
+        contextBuilder.append("14. `quote`: { \"type\": \"quote\", \"text\": \"...\", \"source\": \"...\" }\n")
+        contextBuilder.append("15. `code_block`: { \"type\": \"code_block\", \"language\": \"csv\", \"code\": \"...\" }\n")
+        contextBuilder.append("16. `divider`: { \"type\": \"divider\" }\n\n")
 
         when (responseFormat) {
             "summary" -> {

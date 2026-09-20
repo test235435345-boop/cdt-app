@@ -22,21 +22,31 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -47,6 +57,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -59,6 +70,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +95,7 @@ fun ChatBlockView(
     block: ChatBlock,
     cadets: List<Cadet>,
     onSelectCadet: ((Cadet) -> Unit)? = null,
+    onQuickAction: ((targetScreen: String, targetParam: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxWidth()) {
@@ -96,6 +109,10 @@ fun ChatBlockView(
             is ChatBlock.StatCardBlock -> RenderStatCard(block)
             is ChatBlock.TrendChartBlock -> RenderTrendChart(block)
             is ChatBlock.CadetChipBlock -> RenderCadetChip(block, cadets, onSelectCadet)
+            is ChatBlock.ComparisonCardBlock -> RenderComparisonCard(block)
+            is ChatBlock.LeaderboardBlock -> RenderLeaderboard(block, cadets, onSelectCadet)
+            is ChatBlock.AlertBannerBlock -> RenderAlertBanner(block, onQuickAction)
+            is ChatBlock.QuickActionBlock -> RenderQuickAction(block, onQuickAction)
             is ChatBlock.QuoteBlock -> RenderQuote(block)
             is ChatBlock.CodeBlock -> RenderCodeBlock(block)
             is ChatBlock.DividerBlock -> RenderDivider()
@@ -788,6 +805,466 @@ private fun RenderDivider() {
         modifier = Modifier.padding(vertical = 8.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
     )
+}
+
+@Composable
+private fun RenderComparisonCard(block: ChatBlock.ComparisonCardBlock) {
+    ElevatedCard(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            if (block.title.isNotBlank()) {
+                Text(
+                    text = block.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (block.metricLabel.isNotBlank()) {
+                Text(
+                    text = block.metricLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Left Option
+                val isLeftWinner = block.winnerSide == "left" || block.leftItem.isHighlighted
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isLeftWinner) PresentContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = if (isLeftWinner) Stroke(1.5f).let { androidx.compose.foundation.BorderStroke(1.5.dp, PresentContent.copy(alpha = 0.6f)) } else null,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = block.leftItem.title,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = block.leftItem.value,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isLeftWinner) PresentContent else MaterialTheme.colorScheme.primary
+                        )
+                        if (block.leftItem.subtext.isNotBlank()) {
+                            Text(
+                                text = block.leftItem.subtext,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+
+                // VS Badge
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .size(32.dp)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape)
+                ) {
+                    Text(
+                        text = "VS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                // Right Option
+                val isRightWinner = block.winnerSide == "right" || block.rightItem.isHighlighted
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (isRightWinner) PresentContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = if (isRightWinner) androidx.compose.foundation.BorderStroke(1.5.dp, PresentContent.copy(alpha = 0.6f)) else null,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = block.rightItem.title,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = block.rightItem.value,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isRightWinner) PresentContent else MaterialTheme.colorScheme.primary
+                        )
+                        if (block.rightItem.subtext.isNotBlank()) {
+                            Text(
+                                text = block.rightItem.subtext,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (block.diffText.isNotBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        Icons.Default.TrendingUp,
+                        contentDescription = null,
+                        tint = PresentContent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = block.diffText,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RenderLeaderboard(
+    block: ChatBlock.LeaderboardBlock,
+    cadets: List<Cadet>,
+    onSelectCadet: ((Cadet) -> Unit)?
+) {
+    ElevatedCard(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.EmojiEvents,
+                        contentDescription = null,
+                        tint = Color(0xFFD4AF37),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = block.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (block.subtitle.isNotBlank()) {
+                            Text(
+                                text = block.subtitle,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            block.entries.forEachIndexed { index, entry ->
+                val matchingCadet = cadets.firstOrNull { it.id == entry.cadetId }
+                    ?: cadets.firstOrNull { cadet ->
+                        val cleanTitle = entry.title.lowercase()
+                        cleanTitle.contains(cadet.lastName.lowercase()) ||
+                                (cadet.firstName.isNotBlank() && cleanTitle.contains(cadet.firstName.lowercase()))
+                    }
+
+                val rankBadgeColor = when (entry.rank) {
+                    1 -> Color(0xFFFFD700) // Gold
+                    2 -> Color(0xFFC0C0C0) // Silver
+                    3 -> Color(0xFFCD7F32) // Bronze
+                    else -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                val rankTextColor = when (entry.rank) {
+                    1, 2, 3 -> Color(0xFF1E1E1E)
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (entry.isFlagged) AbsentContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp)
+                        .clickable(enabled = matchingCadet != null && onSelectCadet != null) {
+                            matchingCadet?.let { onSelectCadet?.invoke(it) }
+                        }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .background(rankBadgeColor, CircleShape)
+                            ) {
+                                Text(
+                                    text = "${entry.rank}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = rankTextColor
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = entry.title,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (entry.subtitle.isNotBlank()) {
+                                    Text(
+                                        text = entry.subtitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = entry.score,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (entry.isFlagged) AbsentContent else PresentContent
+                            )
+                            if (entry.badge.isNotBlank()) {
+                                Surface(
+                                    color = if (entry.isFlagged) AbsentContainer else PresentContainer,
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = entry.badge,
+                                        color = if (entry.isFlagged) AbsentContent else PresentContent,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RenderAlertBanner(
+    block: ChatBlock.AlertBannerBlock,
+    onQuickAction: ((targetScreen: String, targetParam: String) -> Unit)?
+) {
+    val (containerColor, contentColor, icon) = when (block.severity.lowercase()) {
+        "danger", "error" -> Triple(AbsentContainer, AbsentContent, Icons.Default.Error)
+        "success" -> Triple(PresentContainer, PresentContent, Icons.Default.CheckCircle)
+        "info" -> Triple(
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+            MaterialTheme.colorScheme.primary,
+            Icons.Default.Info
+        )
+        else -> Triple(LateContainer, LateContent, Icons.Default.Warning) // default warning
+    }
+
+    Surface(
+        color = containerColor,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, contentColor.copy(alpha = 0.4f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .padding(top = 2.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    if (block.title.isNotBlank()) {
+                        Text(
+                            text = block.title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = contentColor
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                    Text(
+                        text = block.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = contentColor,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+
+            if (block.actionText.isNotBlank() && onQuickAction != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TextButton(
+                        onClick = {
+                            val target = if (block.actionText.contains("cadet", ignoreCase = true)) "cadets"
+                            else if (block.actionText.contains("report", ignoreCase = true) || block.actionText.contains("sync", ignoreCase = true)) "reports"
+                            else "attendance"
+                            onQuickAction(target, "")
+                        }
+                    ) {
+                        Text(
+                            text = block.actionText,
+                            fontWeight = FontWeight.Bold,
+                            color = contentColor,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RenderQuickAction(
+    block: ChatBlock.QuickActionBlock,
+    onQuickAction: ((targetScreen: String, targetParam: String) -> Unit)?
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        if (block.title.isNotBlank()) {
+            Text(
+                text = block.title,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            block.actions.forEach { action ->
+                val icon = when (action.iconName.lowercase()) {
+                    "check", "attendance", "mark" -> Icons.Default.CheckCircle
+                    "person", "cadet", "user" -> Icons.Default.Person
+                    "chart", "report", "stats" -> Icons.Default.Assessment
+                    "calendar", "event" -> Icons.Default.Event
+                    else -> when (action.targetScreen.lowercase()) {
+                        "attendance" -> Icons.Default.CheckCircle
+                        "cadets", "cadet_profile" -> Icons.Default.Person
+                        "reports" -> Icons.Default.Assessment
+                        else -> Icons.Default.AutoAwesome
+                    }
+                }
+
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                    modifier = Modifier
+                        .clickable(enabled = onQuickAction != null) {
+                            onQuickAction?.invoke(action.targetScreen, action.targetParam)
+                        }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(
+                            icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = action.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 private fun getStatusColors(status: String): Pair<Color, Color> {

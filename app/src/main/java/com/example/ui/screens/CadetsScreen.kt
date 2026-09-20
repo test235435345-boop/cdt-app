@@ -229,6 +229,7 @@ fun CadetsScreen(
                             elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .animateItem()
                                 .clickable { selectedCadetForProfile = cadet }
                                 .testTag("cadet_roster_item_${cadet.id}")
                         ) {

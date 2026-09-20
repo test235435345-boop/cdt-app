@@ -1,6 +1,7 @@
 package com.example.model
 
 import com.google.firebase.firestore.DocumentId
+import com.google.firebase.firestore.Exclude
 import com.google.firebase.firestore.IgnoreExtraProperties
 
 @IgnoreExtraProperties
@@ -55,9 +56,11 @@ data class Cadet(
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
+    @get:Exclude
     val fullName: String
         get() = if (rank.isNotBlank()) "$rank $lastName, $firstName" else "$lastName, $firstName"
 
+    @get:Exclude
     val displayName: String
         get() = "$firstName $lastName"
 

@@ -9,6 +9,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -136,6 +138,11 @@ fun MainAppScaffold(
     onDownloadExcel: (sheetId: String?, token: String?) -> Unit,
     onExportCsv: (squadron: String?) -> Unit,
     onStartNewYear: (newYearLabel: String, (Boolean) -> Unit) -> Unit,
+    isPdfGenerating: Boolean = false,
+    lastPdfUpdated: Long = 0L,
+    onGenerateOrUpdatePdf: () -> Unit = {},
+    onOpenPdf: () -> Unit = {},
+    onSharePdf: () -> Unit = {},
     onSendMessage: (prompt: String, format: String) -> Unit,
     onSelectChatSession: ((String) -> Unit)? = null,
     onNewChatSession: (() -> Unit)? = null,
@@ -537,7 +544,13 @@ fun MainAppScaffold(
                 AnimatedContent(
                     targetState = selectedTab,
                     transitionSpec = {
-                        fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(160))
+                        if (targetState > initialState) {
+                            (slideInHorizontally(animationSpec = tween(220)) { width -> width / 4 } + fadeIn(animationSpec = tween(220)))
+                                .togetherWith(slideOutHorizontally(animationSpec = tween(180)) { width -> -width / 4 } + fadeOut(animationSpec = tween(180)))
+                        } else {
+                            (slideInHorizontally(animationSpec = tween(220)) { width -> -width / 4 } + fadeIn(animationSpec = tween(220)))
+                                .togetherWith(slideOutHorizontally(animationSpec = tween(180)) { width -> width / 4 } + fadeOut(animationSpec = tween(180)))
+                        }
                     },
                     label = "TabContentTransition"
                 ) { tab ->
@@ -594,6 +607,11 @@ fun MainAppScaffold(
                             onExportCsv = onExportCsv,
                             onStartNewYear = onStartNewYear,
                             onDeleteCadetPermanently = onDeleteCadetPermanently,
+                            isPdfGenerating = isPdfGenerating,
+                            lastPdfUpdated = lastPdfUpdated,
+                            onGenerateOrUpdatePdf = onGenerateOrUpdatePdf,
+                            onOpenPdf = onOpenPdf,
+                            onSharePdf = onSharePdf,
                             getCadetStats = getCadetStats,
                             onUpdateCadet = onUpdateCadet,
                             onArchiveCadet = onArchiveCadet
@@ -610,6 +628,14 @@ fun MainAppScaffold(
                             onSelectSession = onSelectChatSession,
                             onNewSession = onNewChatSession,
                             onDeleteSession = onDeleteChatSession,
+                            onQuickAction = { targetScreen, _ ->
+                                when (targetScreen.lowercase()) {
+                                    "attendance" -> selectedTab = 0
+                                    "cadets", "cadet_profile" -> selectedTab = 1
+                                    "reports" -> selectedTab = 2
+                                    "chat", "gemini", "ask_gemini" -> selectedTab = 3
+                                }
+                            },
                             getCadetStats = getCadetStats,
                             onUpdateCadet = onUpdateCadet,
                             onArchiveCadet = onArchiveCadet,
